@@ -1,0 +1,18 @@
+{
+  "name": "jwhite-claude-plugin",
+  "version": "1.0.0",
+  "description": "Personal Claude Code development tools. Socratic issue creation and HumanLayer thoughts integration.",
+  "author": {
+    "name": "Jonathan White",
+    "url": "https://github.com/Jonathan-A-White"
+  },
+  "repository": "https://github.com/Jonathan-A-White/claude-config",
+  "license": "MIT",
+  "keywords": [
+    "issue-creation",
+    "socratic-method",
+    "humanlayer",
+    "thoughts",
+    "workflow"
+  ]
+}
