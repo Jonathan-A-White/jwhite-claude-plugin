@@ -1,6 +1,7 @@
 ---
 description: Create issues through Socratic questioning to expose gaps in thinking
 argument-hint: "[optional: brief description of the issue]"
+model: opus
 ---
 
 # Create Issue

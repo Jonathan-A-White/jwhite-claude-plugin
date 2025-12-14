@@ -1,10 +1,10 @@
 # HumanLayer Thoughts Setup
 
-This skill guides users through setting up HumanLayer thoughts for collaborative knowledge sharing and issue tracking.
+This skill guides Claude through setting up HumanLayer thoughts for collaborative knowledge sharing and issue tracking.
 
 ## Overview
 
-HumanLayer thoughts is a system for syncing shared context (issues, plans, notes) across team members. This skill helps you install and configure it using npm (Node.js).
+HumanLayer thoughts is a system for syncing shared context (issues, plans, notes) across team members. The `thoughts/` directory in a repo is symlinked to a central `~/thoughts` repo, enabling cross-project knowledge sharing.
 
 ## Prerequisites
 
@@ -12,12 +12,11 @@ Before starting, ensure you have:
 - Node.js installed (v16 or later recommended)
 - npm available in your PATH
 - A HumanLayer API key (get one at https://humanlayer.dev)
+- Git configured with user.name and user.email
 
-## Installation Steps
+## Installation
 
 ### Step 1: Install HumanLayer CLI Globally
-
-Install the HumanLayer CLI using npm:
 
 ```bash
 npm install -g hlyr
@@ -43,31 +42,143 @@ Then reload your shell or run:
 source ~/.bashrc  # or ~/.zshrc
 ```
 
-### Step 3: Initialize Thoughts Directory
+## Setting Up Thoughts for a Repository
 
-Create the thoughts directory structure in your project:
+### Step 1: Clone the Thoughts Repo
+
+First, check if `~/thoughts` already exists:
 
 ```bash
-mkdir -p thoughts/shared/issues
-mkdir -p thoughts/shared/plans
-mkdir -p thoughts/shared/notes
+ls -la ~/thoughts
 ```
 
-### Step 4: Configure Thoughts Sync
+If not, clone the org's thoughts repo. Check remotes to find the org:
 
-You can sync thoughts using:
+```bash
+# Check for upstream remote first
+git remote get-url upstream 2>/dev/null
+
+# If no upstream, check origin
+git remote get-url origin
+```
+
+Extract the org name and clone the thoughts repo:
+
+```bash
+# Example: if origin is git@github.com:myorg/myrepo.git
+# Clone git@github.com:myorg/thoughts.git to ~/thoughts
+git clone git@github.com:<org>/thoughts.git ~/thoughts
+```
+
+If neither remote has a thoughts repo, ask the user for the thoughts repo URL.
+
+### Step 2: Initialize Thoughts Symlinks
+
+The `humanlayer thoughts init` command is interactive. Run it non-interactively:
+
+```bash
+# Get the repo name from the current directory
+REPO_NAME=$(basename $(git rev-parse --show-toplevel))
+
+# Run init non-interactively (option 2 = create new repo config)
+(sleep 0.5; echo "2"; sleep 0.5; echo "$REPO_NAME") | humanlayer thoughts init 2>&1 | cat
+```
+
+This creates symlinks in the current repo:
+
+```
+<repo>/thoughts/
+  ├── global/   -> ~/thoughts/global
+  └── shared/   -> ~/thoughts/repos/<repo>/shared
+```
+
+**Note:** Personal thoughts symlink (e.g., `<username>/`) is not created by default. Only add if user explicitly requests it. Get username via `whoami` or `$USER`.
+
+### Step 3: Verify Setup
+
+```bash
+ls -la thoughts/
+# Should show symlinks pointing to ~/thoughts/...
+```
+
+## Symlink Architecture
+
+The thoughts system uses symlinks to separate concerns:
+
+| Directory | Points To | Purpose |
+|-----------|-----------|---------|
+| `thoughts/global/` | `~/thoughts/global` | Cross-project knowledge, shared across all repos |
+| `thoughts/shared/` | `~/thoughts/repos/<repo>/shared` | Project-specific shared context |
+| `thoughts/<username>/` | `~/thoughts/repos/<repo>/<username>` | Personal notes (optional, on request) |
+
+The actual files live in `~/thoughts/` which is its own git repo, synced separately from the main codebase.
+
+## Workflow Rules
+
+### Critical: Never Commit Thoughts Directly
+
+The `thoughts/` directory contains symlinks to `~/thoughts/repos/<repo>/`. **Do not** run `git add thoughts/` in the main repo.
+
+Git hooks are installed automatically by `humanlayer thoughts init`:
+- **Pre-commit hook**: Prevents accidentally committing thoughts/ files
+- **Post-commit hook**: Runs `humanlayer thoughts sync` automatically
+
+### Autosync Behavior
+
+When you commit to the main repo, the post-commit hook automatically syncs thoughts. No manual sync needed for normal workflow.
+
+### Manual Sync
+
+If you need to sync thoughts without committing:
 
 ```bash
 humanlayer thoughts sync
 ```
 
-For automatic syncing, consider adding a git hook or running sync as part of your workflow.
+## Available Agents
 
-## Optional: Configure Notification Channels
+HumanLayer provides specialized agents for codebase and thoughts analysis. Use these via the Task tool:
+
+| Agent | Description | Tools |
+|-------|-------------|-------|
+| `codebase-analyzer` | Analyzes code implementation details, documents how code works with file:line references | Read, Grep, Glob, LS |
+| `codebase-locator` | Locates files and components relevant to a feature. "Super Grep/Glob/LS" | Grep, Glob, LS |
+| `codebase-pattern-finder` | Finds similar implementations and usage examples | Grep, Glob, Read, LS |
+| `thoughts-analyzer` | Deep research document analysis, extracts actionable insights | Read, Grep, Glob, LS |
+| `thoughts-locator` | Discovers relevant documents in thoughts/ directory | Grep, Glob, LS |
+| `web-search-researcher` | Web research for modern/external information | WebSearch, WebFetch, TodoWrite, Read, Grep, Glob, LS |
+
+### Using Agents
+
+```
+Use the Task tool with subagent_type="codebase-locator" to find files related to authentication
+```
+
+## Directory Structure
+
+After setup, the thoughts directory contains:
+
+```
+thoughts/
+  ├── CLAUDE.md           # Local instructions (not symlinked)
+  ├── global/             # -> ~/thoughts/global
+  │     └── ...           # Cross-project knowledge
+  └── shared/             # -> ~/thoughts/repos/<repo>/shared
+        ├── issues/       # Issue definitions (created via /create-issue)
+        ├── plans/        # Implementation plans
+        └── notes/        # General notes and context
+```
+
+## Configuration Files
+
+| File | Purpose |
+|------|---------|
+| `~/.config/humanlayer/humanlayer.json` | Global HumanLayer config (written by init) |
+| `.hlyr.json` | Project-specific settings (optional) |
+
+## Optional: Notification Channels
 
 ### Slack Integration
-
-To receive notifications via Slack:
 
 ```bash
 export HUMANLAYER_SLACK_CHANNEL=C08XXXXXXXX
@@ -75,52 +186,33 @@ export HUMANLAYER_SLACK_CHANNEL=C08XXXXXXXX
 
 ### Email Integration
 
-To receive notifications via email:
-
 ```bash
 export HUMANLAYER_EMAIL_ADDRESS=your@email.com
 ```
 
-### Configuration File
+## MCP Server Mode
 
-For project-specific settings, create `.hlyr.json` in your project root:
-
-```json
-{
-  "slack_channel": "C08XXXXXXXX",
-  "email": "team@example.com",
-  "thoughts_dir": "thoughts/shared"
-}
-```
-
-## Directory Structure
-
-After setup, your thoughts directory should look like:
-
-```
-thoughts/
-  shared/
-    issues/        # Issue definitions (created via /create-issue)
-    plans/         # Implementation plans
-    notes/         # General notes and context
-```
-
-## Usage with Claude Code
-
-Once set up, you can use the `/create-issue` command to create issues through Socratic questioning. Issues are automatically saved to `thoughts/shared/issues/` and can be synced with your team.
-
-### Common Commands
+HumanLayer can run as an MCP server for deeper Claude Code integration:
 
 ```bash
-# Sync thoughts with team
-humanlayer thoughts sync
-
-# Contact a human for approval/input
-humanlayer contact_human -m "Need approval for deployment"
-
-# Run without installation (one-off usage)
-npx humanlayer contact_human -m "Quick question"
+humanlayer mcp serve
 ```
+
+For approval workflows:
+
+```bash
+humanlayer mcp claude_approvals
+```
+
+## Quick Reference
+
+| Command | Description |
+|---------|-------------|
+| `npm install -g hlyr` | Install HumanLayer CLI |
+| `humanlayer thoughts init` | Initialize thoughts for current repo |
+| `humanlayer thoughts sync` | Sync thoughts directory |
+| `humanlayer contact_human -m "msg"` | Contact a human |
+| `humanlayer mcp serve` | Start MCP server |
 
 ## Troubleshooting
 
@@ -145,39 +237,10 @@ If you get authentication errors:
 If you get permission errors during global install:
 
 ```bash
-# Option 1: Use sudo (not recommended)
-sudo npm install -g hlyr
-
-# Option 2: Fix npm permissions (recommended)
+# Fix npm permissions (recommended)
 mkdir ~/.npm-global
 npm config set prefix '~/.npm-global'
 echo 'export PATH=~/.npm-global/bin:$PATH' >> ~/.bashrc
 source ~/.bashrc
 npm install -g hlyr
 ```
-
-## Integration with Other Tools
-
-### MCP Server Mode
-
-HumanLayer can run as an MCP server for deeper Claude Code integration:
-
-```bash
-humanlayer mcp serve
-```
-
-For approval workflows:
-
-```bash
-humanlayer mcp claude_approvals
-```
-
-## Quick Reference
-
-| Command | Description |
-|---------|-------------|
-| `npm install -g hlyr` | Install HumanLayer CLI globally |
-| `humanlayer thoughts sync` | Sync thoughts directory |
-| `humanlayer contact_human -m "msg"` | Contact a human |
-| `humanlayer mcp serve` | Start MCP server |
-| `npx humanlayer <cmd>` | Run without global install |
